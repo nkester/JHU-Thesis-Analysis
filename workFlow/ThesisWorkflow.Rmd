@@ -1,0 +1,86 @@
+---
+title: "Thesis Workflow"
+author: "Neil Kester"
+date: "4/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose  
+
+# Create a Simulation and Entity Table  
+
+First, it is useful to understand information about the sensors and the entities that carried them in the specific "Design Point" and "Iteration" under evaluation. First, lets load the required query and connection object information and then execute the function.   
+
+```{r}
+
+source("./connectionObjects/entityMappingConnectionObj.R")
+
+entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoUri,
+                              mongoDb = mongoDb,
+                              mongoCollection = sensorIDNameCollection,
+                              mongoFields = sensorIDNameFields,
+                              mongoQuery = sensorIDNameQuery)
+
+
+```  
+
+
+## Sensory Description  
+
+```{r}
+
+entitySensorMapping$SensorDescription
+
+```  
+
+## Entity ID to Entity Name  
+
+```{r}
+
+entitySensorMapping$EntityIdToName
+
+```
+
+## Sensor ID to Entity ID  
+
+```{r}
+
+entitySensorMapping$SensorToEntityId
+
+```
+
+## Unnested Sensor State 
+
+This is the full data set produced by the input query.  
+
+```{r}
+
+entitySensorMapping$UnnestedSensorState
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
