@@ -134,17 +134,118 @@ sensorAcq <- modSim::sensorAcquisition(mongoUri = mongoUri,
 
 # Compile Tables  
 
-Using the reference tables created in last section, we will transform them into useful information.  
+Using the reference tables created in last section, we will transform them into useful information.
+
+## Sensing Entities  
+
+I only care about Entities (vehicles) that have sensors so I'll drop all entities not in the `SensorToEntityId` table. Then I'll add the description of each sensor and reorder the columns.
 
 ```{r}
 
+requireNamespace("magrittr")
+
+humanNameToSensor <- dplyr::left_join(x = entitySensorMapping$EntityIdToName,
+                                      y = entitySensorMapping$SensorToEntityId,
+                                      by = "entityId") %>%
+  dplyr::left_join(x = .,
+                   y = entitySensorMapping$SensorDescription,
+                   by = "sensorId") %>%
+  dplyr::mutate(pltLevelName = stringr::str_extract(string = source,
+                                                 pattern = "[^/]*/[^/]*/[^/]*$"),
+                shortName =  stringr::str_extract(string = source,
+                                                 pattern = "[^/]*$")) %>%
+  dplyr::select(shortName,
+                pltLevelName,
+                acquireSensorType,
+                magnification,
+                entityId,
+                sensorId,
+                source)
+
+humanNameToSensor
+```
+
+Now that I understand the entities and their sensors, I'll select one entity at a time, starting with `EPBV 90 2`.  
+
+```{r}
+
+entity_epbv_90_2 <- humanNameToSensor %>%
+  dplyr::filter(shortName == "EPBV 90 2")
+
+entity_epbv_90_2
+```  
+
+### What Can EPBV 90 2 See Over Time  
+
+First, lets look at what LOS EPBV 90 2 has for each target over time. I'll select only the columns of information I need and filter out all sensors except those on the `EPBV 90 2` platform. 
+
+```{r}
+
+entity_epbv_90_2_los <- LosData %>%
+  dplyr::select(sensorId,targetId,time,hasLOS) %>%
+  dplyr::filter(sensorId %in% entity_epbv_90_2$sensorId)
 
 
+entity_epbv_90_2_los
+```
+That data frame looks good. Finally, I'll filter to see if any of the sensors EVER do not have line of sight with any of the targets.  
 
+```{r}
+
+entity_epbv_90_2_los %>%
+    dplyr::filter(isFALSE(hasLOS))
+
+```
+It turns out this vehicle can always see all targets.  
+
+I'll run through all the others to see if any lose LOS.  
+
+```{r}
+
+entIds <- dplyr::distinct(humanNameToSensor,entityId)[[1]]
+
+LosResponses <- list()
+
+LosDataSubset <- LosData %>%
+  dplyr::select(sensorId,targetId,time,hasLOS)
+
+for(entId in entIds){
+  
+  testEntity <- dplyr::filter(humanNameToSensor,entityId == entId)
+
+  entName <- dplyr::distinct(testEntity,shortName)[[1]]
+  
+  LosResponses[entName] <- LosDataSubset %>%
+    dplyr::filter(sensorId %in% testEntity$sensorId) %>%
+    dplyr::filter(isFALSE(hasLOS))
+  
+}
+
+LosResponses
+
+```
+
+```{r}
+
+entitySensorMapping$SensorDescription
+
+entitySensorMapping$EntityIdToName
 
 ```
 
 
+
+```{r}
+
+entitySensorMapping$EntityIdToName
+
+```
+
+```{r}
+
+entitySensorMapping$SensorToEntityId
+
+```
 
 
 
