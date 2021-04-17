@@ -11,7 +11,9 @@ knitr::opts_chunk$set(echo = TRUE,messages=FALSE)
 
 # Purpose  
 
-# Create a Simulation and Entity Table  
+# Preparation
+
+## Create a Simulation and Entity Table  
 
 First, it is useful to understand information about the sensors and the entities that carried them in the specific "Design Point" and "Iteration" under evaluation. First, lets load the required query and connection object information and then execute the function.   
 
@@ -29,7 +31,7 @@ entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoUri,
 ```  
 
 
-## Sensory Description  
+### Sensory Description  
 
 ```{r}
 
@@ -37,7 +39,7 @@ entitySensorMapping$SensorDescription
 
 ```  
 
-## Entity ID to Entity Name  
+### Entity ID to Entity Name  
 
 ```{r}
 
@@ -45,7 +47,7 @@ entitySensorMapping$EntityIdToName
 
 ```
 
-## Sensor ID to Entity ID  
+### Sensor ID to Entity ID  
 
 ```{r}
 
@@ -53,7 +55,7 @@ entitySensorMapping$SensorToEntityId
 
 ```
 
-## Unnested Sensor State 
+### Unnested Sensor State 
 
 This is the full data set produced by the input query.  
 
@@ -86,7 +88,7 @@ entitySensorMapping$UnnestedSensorState
 
 
 
-# Create a Line of Sight Table  
+## Create a Line of Sight Table  
 
 This table describes when a sensor target has Line of Sight (LOS). This does not mean they have acquired each other but rather that their line of sight is not obstructed.  
 
@@ -109,7 +111,7 @@ LosData
 
 ```
 
-# Sensor Target Acquisitions
+## Sensor Target Acquisitions
 
 Unlike the LOS table, this table shows the state of acquisition between each sensor target pair. It also shows the previous acquisition state so we can determine when the acquistion level changes.  
 
@@ -117,7 +119,7 @@ Unlike the LOS table, this table shows the state of acquisition between each sen
 
 source("./connectionObjects/acqConnectionObj.R")
 
-modSim::sensorAcquisition(mongoUri = mongoUri,
+sensorAcq <- modSim::sensorAcquisition(mongoUri = mongoUri,
                           mongoDb = mongoDb,
                           mongoCollection = acqMongoCollection,
                           mongoQuery = acqMongoQuery,
@@ -127,6 +129,21 @@ modSim::sensorAcquisition(mongoUri = mongoUri,
                                                "any", 
                                                "sensorDetection"))
 ```
+
+
+
+# Compile Tables  
+
+Using the reference tables created in last section, we will transform them into useful information.  
+
+```{r}
+
+
+
+
+
+```
+
 
 
 
