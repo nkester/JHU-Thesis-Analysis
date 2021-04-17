@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,messages=FALSE)
 ```
 
 # Purpose  
@@ -76,6 +76,57 @@ entitySensorMapping$UnnestedSensorState
 
 
 
+
+
+
+
+
+
+
+
+
+
+# Create a Line of Sight Table  
+
+This table describes when a sensor target has Line of Sight (LOS). This does not mean they have acquired each other but rather that their line of sight is not obstructed.  
+
+```{r}
+
+source("./connectionObjects/hasLosConnectionObj.R")
+
+LosData <- modSim::mongoUnnest(mongoUri = mongoUri,
+                               mongoDb = mongoDb,
+                               mongoCollection = losMongoCollection,
+                               mongoQuery = losMongoQuery,
+                               mongoFields = losMongoFields,
+                               unnestCols = "event")
+
+```  
+
+```{r}
+
+LosData
+
+```
+
+# Sensor Target Acquisitions
+
+Unlike the LOS table, this table shows the state of acquisition between each sensor target pair. It also shows the previous acquisition state so we can determine when the acquistion level changes.  
+
+```{r}
+
+source("./connectionObjects/acqConnectionObj.R")
+
+modSim::sensorAcquisition(mongoUri = mongoUri,
+                          mongoDb = mongoDb,
+                          mongoCollection = acqMongoCollection,
+                          mongoQuery = acqMongoQuery,
+                          mongoFields = acqMongoFields,
+                          recursiveUnnests = c("event",
+                                               "messageData", 
+                                               "any", 
+                                               "sensorDetection"))
+```
 
 
 
