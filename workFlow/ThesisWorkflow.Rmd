@@ -27,7 +27,8 @@ entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoUri,
                               mongoFields = sensorIDNameFields,
                               mongoQuery = sensorIDNameQuery)
 
-
+#> Clean up the environment
+rm(mongoDb,mongoUri,sensorIDNameCollection,sensorIDNameFields,sensorIDNameQuery)
 ```  
 
 
@@ -103,6 +104,9 @@ LosData <- modSim::mongoUnnest(mongoUri = mongoUri,
                                mongoFields = losMongoFields,
                                unnestCols = "event")
 
+
+#> Clean up the environment
+rm(losMongoCollection,losMongoFields,losMongoQuery,mongoDb,mongoUri)
 ```  
 
 ```{r}
@@ -128,6 +132,209 @@ sensorAcq <- modSim::sensorAcquisition(mongoUri = mongoUri,
                                                "messageData", 
                                                "any", 
                                                "sensorDetection"))
+
+#> Clean up the environment
+rm(acqMongoCollection,acqMongoFields,acqMongoQuery,mongoDb,mongoUri)
+
+sensorAcq
+```
+
+# TEMP Nested Tibbles  
+
+## Max Time Value
+
+Take the max from the sensor acquisition and los data frames.
+
+```{r}
+maxTime <- max(max(sensorAcq$time),max(LosData$time))
+```
+
+## Compile All Targets and All Sensors
+
+```{r}
+
+targets <- dplyr::bind_rows(
+  dplyr::select(.data = sensorAcq,
+                targetId),
+  dplyr::select(.data = LosData,
+                targetId)
+) %>%
+  dplyr::distinct(targetId)
+
+```
+
+```{r}
+
+sensors <- dplyr::distinct(entitySensorMapping$SensorToEntityId,sensorId)
+
+sensors
+
+```
+
+
+## Create a Nested Tibble  
+
+I will now create a nested tibble for each sensor. Each sensor will be an element in a list. Each of those elements will be a tibble where each row is a timestep and the status column is a nested tibble containing all possible targets. As we continue this will be built out to contain the line of sight and acquisition status of each target for that time step by that sensor.
+
+```{r}
+# Select a single sensor
+sensors[1,][[1]]
+
+# Initialize a list
+test <- list()
+
+#> Create a named element in that list for the sensor at hand. Asign to that named 
+#>  element a tibble with a row for each timestep and a status list column containing 
+#>  all of the targets.
+test[[sensors[1,][[1]]]] <- tibble::tibble(time = 0:maxTime,
+                                           status = list(targets))
+
+
+dplyr::glimpse(test)
+```
+
+### Specify the Start and Stop time for each state in LOS and Sensor Acquisitions
+
+This rearranges the `LosData` and `sensorAcq` so that each row has a start and stop time for that state.  
+
+```{r}
+newLosData <- LosData %>%
+  dplyr::select(time,sensorId,targetId,hasLOS) %>%
+  dplyr::group_by(sensorId,targetId) %>%
+  dplyr::mutate(groups = dplyr::cur_group_id()) %>%
+  dplyr::arrange(groups,time) %>%
+  dplyr::mutate(nextChange = as.integer(dplyr::lead(time)-1)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(nextChange = dplyr::case_when(
+    is.na(nextChange) ~ max(time),
+    TRUE ~ nextChange
+  )) %>%
+  dplyr::select(time,nextChange,sensorId,targetId,hasLOS)
+
+newSensorAcq <- sensorAcq %>%
+  dplyr::select(time,sensorId,targetId,detectionLevel,previousDetectionLevel) %>%
+  dplyr::group_by(sensorId,targetId) %>%
+  dplyr::mutate(groups = dplyr::cur_group_id()) %>%
+  dplyr::arrange(groups,time) %>%
+  dplyr::mutate(nextChange = as.integer(dplyr::lead(time)-1)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(nextChange = dplyr::case_when(
+    is.na(nextChange) ~ max(time),
+    TRUE ~ nextChange
+  ),
+  detectionLevel = dplyr::case_when(
+    detectionLevel == "SENSOR_NODETECTION" ~ FALSE,
+    TRUE ~ TRUE
+  ),
+  previousDetectionLevel = dplyr::case_when(
+    previousDetectionLevel == "SENSOR_NODETECTION" ~ FALSE,
+    TRUE ~ TRUE
+  )) %>%
+  dplyr::select(time,nextChange,sensorId,targetId,detectionLevel,previousDetectionLevel)
+```
+
+### Create a function to fill in LOS and Acq data
+
+This function takes an integer representing the current evaluated timestep (`t`), a character of the sensor id (`sen`) and a tibble of targets (`tar`). It returns a tibble with logicals describing if a target could be seen (`hasLOS`) and is currently acquired (`isAcquired`).
+
+```{r}
+t <- 14023
+losAndAcqData <- function(t,sen,tar){
+  message(t)
+  tempLos <- newLosData %>%
+    dplyr::filter(sensorId == sen,and(time <= t, t <= nextChange)) %>%
+    dplyr::select(targetId,hasLOS) %>%
+    dplyr::left_join(x = tar,y = .,by = "targetId") %>%
+    tidyr::replace_na(list(hasLOS = FALSE))
+  
+  newSensorAcq %>%
+    dplyr::filter(sensorId == sen,and(time <= t, t <= nextChange)) %>%
+    dplyr::select(targetId,detectionLevel) %>%
+    dplyr::rename("isAcquired"=detectionLevel) %>%
+    dplyr::left_join(x = tar,
+                     y = .,
+                     by = "targetId") %>%
+    tidyr::replace_na(list(isAcquired = FALSE)) %>%
+    dplyr::left_join(x = .,
+                     y = tempLos,
+                     by = "targetId")
+  
+}
+
+tar <- tarList[[1]]
+
+```  
+
+### Apply the function
+This needs to be cleaned up so I don't need to call the sensorId.
+
+Filtering where time <= 100 just makes this faster to check.
+
+This creates a list column called `status` by taking the time column, the current sensor's ID, and the targets in the existing status list column and applying the `losAndAcqData()` to it.
+
+```{r}
+xyv<-test$`6ef0c641-6693-46ad-943b-203a7792d849` %>% 
+  #dplyr::filter(time<=100) %>%
+  dplyr::mutate(status = purrr::pmap(.l = list(time,"6ef0c641-6693-46ad-943b-203a7792d849",status),.f = losAndAcqData))
+```
+
+Now we have a list describing the status of each target for the specifi sensor-time pair.  
+
+```{r}
+xyv[100,]$status[[1]]
+```
+
+### Summarise the Status List
+
+To summarize the list column and count the number of targets with LOS and that has been acquired, apply this function.  
+
+```{r}
+fun_sum <- function(losCol){
+  
+  dplyr::summarise(.data = losCol,
+                   losCount=sum(hasLOS),
+                   acqCount = sum(isAcquired))
+  
+  
+}
+```
+
+Apply it in this way.
+
+```{r}
+xyv <- xyv %>% 
+  dplyr::mutate(time,hasLOS=purrr::map(status,fun_sum)) %>% tidyr::unnest(hasLOS)
+
+
+```
+
+
+
+```{r}
+
+sen <- "a15d9d8e-bbbc-4898-9dba-62a9f7e8f615"
+tar <- "22d3b6e3-732d-4e69-982e-9431c68d2d05"
+
+function(sen,tar,maxTime){
+  
+  los <- LosData %>%
+    dplyr::filter(sensorId == sen,targetId == tar) %>%
+    dplyr::select(time,hasLOS)
+  
+  acq <- sensorAcq %>%
+    dplyr::filter(sensorId == sen,targetId == tar) %>%
+    dplyr::select(time,detectionLevel,previousDetectionLevel)
+  
+  tibble::tibble(time = 0:maxTime) %>%
+    dplyr::left_join(x = .,
+                     y = los,
+                     by = "time") %>%
+    dplyr::left_join(x = .,
+                     y = acq,
+                     by = "time")
+    
+  
+}
 ```
 
 
@@ -175,7 +382,10 @@ entity_epbv_90_2 <- humanNameToSensor %>%
 entity_epbv_90_2
 ```  
 
-### What Can EPBV 90 2 See Over Time  
+
+# Produce LOS by Sensor - Target Pair
+
+## What Can EPBV 90 2 See Over Time  
 
 First, lets look at what LOS EPBV 90 2 has for each target over time. I'll select only the columns of information I need and filter out all sensors except those on the `EPBV 90 2` platform. 
 
@@ -193,18 +403,22 @@ That data frame looks good. Finally, I'll filter to see if any of the sensors EV
 ```{r}
 
 entity_epbv_90_2_los %>%
-    dplyr::filter(isFALSE(hasLOS))
+    dplyr::filter(!hasLOS)
 
 ```
-It turns out this vehicle can always see all targets.  
+It turns out that various sensors on `EPBV 90 2` do not have line of sight with several targets during this simulation. 
 
-I'll run through all the others to see if any lose LOS.  
+## Start of a LOS Function!
+
+I'll run through all the others sensors and produce "Has LOS" and "Doesn't Have LOS" data frames.  
 
 ```{r}
 
 entIds <- dplyr::distinct(humanNameToSensor,entityId)[[1]]
 
-LosResponses <- list()
+LosResponsesFalse <- list()
+
+LosResponsesTrue <- list()
 
 LosDataSubset <- LosData %>%
   dplyr::select(sensorId,targetId,time,hasLOS)
@@ -212,18 +426,202 @@ LosDataSubset <- LosData %>%
 for(entId in entIds){
   
   testEntity <- dplyr::filter(humanNameToSensor,entityId == entId)
-
-  entName <- dplyr::distinct(testEntity,shortName)[[1]]
   
-  LosResponses[entName] <- LosDataSubset %>%
+  LosResponsesFalse <- LosDataSubset %>%
     dplyr::filter(sensorId %in% testEntity$sensorId) %>%
-    dplyr::filter(isFALSE(hasLOS))
+    dplyr::filter(!hasLOS) %>%
+    dplyr::mutate(entityId = entId) %>%
+    dplyr::bind_rows(LosResponsesFalse,
+                     .)
+  
+  LosResponsesTrue <- LosDataSubset %>%
+    dplyr::filter(sensorId %in% testEntity$sensorId) %>%
+    dplyr::filter(hasLOS) %>%
+    dplyr::mutate(entityId = entId) %>%
+    dplyr::bind_rows(LosResponsesTrue,
+                     .)
   
 }
 
-LosResponses
+LosResponsesFalse <- dplyr::select(LosResponsesFalse, 
+              entityId, 
+              sensorId,
+              targetId,
+              time,
+              hasLOS)
+
+LosResponsesTrue <- dplyr::select(LosResponsesTrue, 
+              entityId, 
+              sensorId,
+              targetId,
+              time,
+              hasLOS)
 
 ```
+
+Now we have two tidy data frames. One with those observations where the sensor does not have line of sight to a specific target and the second where it does. This data frame contains the entityId, the sensorId, and the targetId so we can get back to human readable names and characteristics of each quickly. It also has the time this event occurred and the `hasLOS` TRUE/FALSE response.
+
+```{r}
+
+LosResponsesFalse
+
+```   
+
+## Summarization
+
+### By Sensor
+
+At this point I will summarize the `LosResponsesTrue` dataframe in two ways. First by counting the number of true LOS events by entityId, sensorId, and time pair. Then I'll do the same by entityId and time pair.  
+
+```{r}
+
+sensorTrueLos <- LosResponsesTrue %>%
+  dplyr::group_by(entityId,sensorId,time) %>%
+  dplyr::summarise(targetsSensorSees = dplyr::n())
+
+```  
+
+### By Entity  
+
+This is helpful in evaluating a specific sensor but to evaluate the performance of a vehicle or entity, we should summarize but what the vehicle as a whole can see.  
+
+```{r}
+
+entityTrueLos <- LosResponsesTrue %>%
+  dplyr::group_by(entityId,time) %>%
+  dplyr::summarise(targetsEntitySees = dplyr::n())
+
+entityTrueLos
+
+```
+
+## Plot LOS Count Data!
+
+Now that we have this data, lets plot it. This should be the first layer in our final graph. For readability, I'll filter to only look at "EPBV 90 2"
+
+
+```{r}
+
+library(ggplot2)
+
+losPlot <- entityTrueLos %>%
+  dplyr::left_join(x = .,
+                   y = dplyr::select(.data = humanNameToSensor,
+                                     entityId,
+                                     shortName),
+                   by = c("entityId"="entityId")) %>%
+  dplyr::filter(shortName == "EPBV 90 2") %>%
+  ggplot2::ggplot(data = .) +
+  ggplot2::geom_point(mapping = aes(x = time,
+                                    y = targetsEntitySees),
+                      stroke = 0.15,
+                      shape = 4) +
+  ggplot2::facet_wrap(~shortName) +
+  ggplot2::theme_minimal()
+
+losPlot
+
+```
+
+# Produce Acquisitions by Sensor - Target Pair  
+
+## What **HAS** EPBV 90 2 Seen Over Time  
+
+Similar to the LOS data, lets see what the EPBV 90 2 has sensed over time.  
+
+Note, it appears `senderId`==`sensorId`  
+
+
+```{r}
+
+entity_epbv_90_2_Acq <- sensorAcq %>%
+  dplyr::select(sensorId,
+                entityId,
+                targetId,
+                time,
+                detectionLevel,
+                previousDetectionLevel,
+                timeToDetection) %>%
+  dplyr::filter(sensorId %in% entity_epbv_90_2$sensorId)
+
+entity_epbv_90_2_Acq
+
+```  
+
+Now that we have all of the observations for the EPBV 90 2, lets see only those times when targets are acquired:
+
+```{r}
+entity_epbv_90_2_Acq_detection <- entity_epbv_90_2_Acq %>%
+  dplyr::filter(detectionLevel != "SENSOR_NODETECTION")
+```  
+
+```{r}
+tempDetected <- entity_epbv_90_2_Acq_detection %>%
+  dplyr::left_join(x = .,
+                   y = dplyr::distinct(.data = dplyr::select(.data = humanNameToSensor,
+                                                             entityId,
+                                                             shortName),
+                                       entityId,
+                                       shortName),
+                   by = c("entityId"="entityId")) %>%
+  dplyr::select(shortName,
+                entityId,
+                sensorId,
+                targetId,
+                time,
+                detectionLevel,
+                previousDetectionLevel,
+                timeToDetection) %>% 
+    dplyr::distinct(shortName,entityId,time,targetId) %>%
+    dplyr::group_by(shortName,entityId,time) %>%
+  dplyr::summarise(targetsEntityAcquires = dplyr::n()) %>%
+  dplyr::ungroup()
+
+tempCombined <- entityTrueLos %>%
+  dplyr::left_join(x = .,
+                   y = dplyr::select(.data = humanNameToSensor,
+                                     entityId,
+                                     shortName),
+                   by = c("entityId"="entityId")) %>%
+  dplyr::filter(shortName == "EPBV 90 2") %>%
+  dplyr::ungroup() %>%
+  dplyr::full_join(x = .,
+                   y = dplyr::select(.data = tempDetected,
+                                           entityId,
+                                           time,
+                                           targetsEntityAcquires),
+                   by = c("entityId"="entityId","time"="time")) 
+
+tempCombined %>%
+  dplyr::distinct(entityId,time,targetsEntitySees,shortName,targetsEntityAcquires) %>%
+  dplyr::arrange(time) %>%
+  dplyr::mutate(
+    targetsEntitySees = dplyr::case_when(
+      is.na(targetsEntitySees) ~ dplyr::lag(targetsEntitySees),
+      TRUE ~ targetsEntitySees),
+    shortName = dplyr::case_when(
+      is.na(shortName) ~ dplyr::lag(shortName),
+      TRUE ~ shortName),
+    targetsEntityAcquires = dplyr::case_when(
+    is.na(targetsEntityAcquires) ~ dplyr::lag(targetsEntityAcquires),
+    TRUE ~ targetsEntityAcquires)) %>%
+  dplyr::arrange(time) %>% 
+  ggplot2::ggplot(data = .) +
+  ggplot2::geom_point(mapping = aes(x = time,
+                                    y = targetsEntitySees),
+                      stroke = 0.25,
+                      shape = 4,
+                      color = "blue") +
+  ggplot2::geom_point(mapping = aes(x = time,
+                                    y = targetsEntityAcquires),
+                      stroke = 0.25,
+                      shape = 25,
+                      color = "red")
+
+
+```
+
+
 
 ```{r}
 
@@ -231,6 +629,8 @@ entitySensorMapping$SensorDescription
 
 entitySensorMapping$EntityIdToName
 
+
+dplyr::distinct(LosData,time)
 ```
 
 
