@@ -217,6 +217,7 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
 
 query_losAcqState <- "CREATE TABLE \"losAcqState\" (
                    \"losAcqState_id\" SERIAL PRIMARY KEY,
+                   \"sensorTargetPairsId\" INTEGER,
                    \"time\" INTEGER,
                    \"hasLOS\" BOOLEAN,
                    \"hasAcquisition\" BOOLEAN,
@@ -234,9 +235,18 @@ rm(pgConn,
    query_losAcqState)
 
 ```
+
+
 ```{r}
 
 sensorTargetPairsWithId[10,]
+### TEST 
+idx <- 65
+temp <- sensorTargetPairsWithId[10,]
+
+temp <- sensorTargetPairsWithId %>%
+  dplyr::filter(targetId == "11dc4f05-80b6-4f5c-a14a-76d2f0cca2aa",
+                sensorId == "090a08dd-7069-41fd-b83d-f50ebc090fd3")
 
 # sensorTargetPairsWithIdAndTime <- sensorTargetPairsWithId %>%
 #   dplyr::mutate(time = list(0:maxTime))
@@ -245,13 +255,6 @@ sensorTargetPairsWithId[10,]
 
 
 ```{r}
-### TEST 
-idx <- 65
-temp <- sensorTargetPairsWithId[10,]
-
-temp <- sensorTargetPairsWithId %>%
-  dplyr::filter(targetId == "11dc4f05-80b6-4f5c-a14a-76d2f0cca2aa",
-                sensorId == "090a08dd-7069-41fd-b83d-f50ebc090fd3")
 
 for(idx in 1:nrow(sensorTargetPairsWithId)){
   
@@ -306,10 +309,12 @@ for(idx in 1:nrow(sensorTargetPairsWithId)){
                                       detectionLevel = "SENSOR_NODETECTION",
                                       hasAcquisition = FALSE)) %>%
      dplyr::mutate(losAcqState_id = NA,
+                   sensorTargetPairsId = temp$sensorTargetPairs_id,
                    runId = meta$runId,
                    designPoint = meta$designPoint,
                    iteration = meta$iteration) %>%
      dplyr::select(losAcqState_id,
+                   sensorTargetPairsId,
                    time,
                    hasLOS,
                    hasAcquisition,
@@ -322,7 +327,7 @@ for(idx in 1:nrow(sensorTargetPairsWithId)){
    
    for(rdx in 1:round(nrow(working)/1000)){
      
-     message(paste0(rdx/round(nrow(working)/1000),"% Complete"))
+     message(paste0(rdx/round(nrow(working)/1000)*100,"% Complete"))
      
      end <- rdx*1000
      
@@ -362,16 +367,19 @@ for(idx in 1:nrow(sensorTargetPairsWithId)){
   RPostgreSQL::dbGetQuery(conn = pgConn,
                           statement = "SELECT count(*) FILTER (WHERE \"hasLOS\") FROM \"losAcqState\"")
    
-    RPostgreSQL::dbGetQuery(conn = pgConn,
-                          statement = "SELECT * FROM \"losAcqState\"")
+    peek <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                          statement = "SELECT * FROM \"losAcqState\" LIMIT 10")
     
     RPostgreSQL::dbSendQuery(conn = pgConn,
                               statement = "DROP TABLE \"losAcqState\"")
    
-}
+} # close idx
 
+working
 
-
+```
+```{r}
+working2
 ```
 
 
