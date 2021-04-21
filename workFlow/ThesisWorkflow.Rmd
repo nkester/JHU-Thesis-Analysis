@@ -33,24 +33,11 @@ pgDb <- 'modSim'
 
 ```
 
-### Create the Required Tables in the Database  
-
-These are the required tables:  
-
 ```{r}
-### TEST 
-pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
-                         host = pgHost,
-                         port = pgPort,
-                         user = pgUser,
-                         password = pgPass,
-                         dbname = pgDb)
 
-
-
-RPostgreSQL::dbDisconnect(conn = pgConn)
-
-rm(pgConn)
+meta <- tibble::tibble(runId = "419cd161-0912-4900-a4af-05ef67dc0edb",
+                       designPoint = "Test baseline",
+                       iteration = 1742474971)
 
 ```
 
@@ -84,10 +71,9 @@ rm(pgConn,
    maxLosTime,
    maxSensorAcqTime)
 ```
+## Sensor - Target Pairs
 
-## Compile All Targets and All Sensors
-
-### Targets  
+### Compile All Observed Sensor - Target Pairs
 
 ```{r}
 
@@ -98,23 +84,35 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          password = pgPass,
                          dbname = pgDb)
 
-targetsAcq <- RPostgreSQL::dbGetQuery(conn = pgConn,
-                                      statement = "SELECT DISTINCT \"targetId\" FROM \"sensorAcqState\"")
+acqState_targetSensorPairs <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                                      statement = sprintf("SELECT DISTINCT \"targetId\", \"sensorId\" FROM \"sensorAcqState\" WHERE \"runId\" = '%s' AND \"designPoint\" = '%s' AND \"iteration\" = '%s'",
+                                                                          meta$runId,
+                                                                          meta$designPoint,
+                                                                          meta$iteration))
 
-targetsLos <- RPostgreSQL::dbGetQuery(conn = pgConn,
-                                      statement = "SELECT DISTINCT \"targetId\" FROM \"losState\"")
+losState_targetSensorPairs <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                                      statement = sprintf("SELECT DISTINCT \"targetId\", \"sensorId\" FROM \"losState\" WHERE \"runId\" = '%s' AND \"designPoint\" = '%s' AND \"iteration\" = '%s'",
+                                                                          meta$runId,
+                                                                          meta$designPoint,
+                                                                          meta$iteration))
 
-targets <- dplyr::bind_rows(targetsLos,targetsAcq) %>% dplyr::distinct(targetId)
+targetSensorPairs <- dplyr::bind_rows(acqState_targetSensorPairs,
+                            losState_targetSensorPairs) %>% 
+  dplyr::distinct(sensorId,
+                  targetId)
 
 RPostgreSQL::dbDisconnect(conn = pgConn)
 
 rm(pgConn,
-   targetsAcq,
-   targetsLos)
+   acqState_targetSensorPairs,
+   losState_targetSensorPairs)
 
 ```
 
-### Sensors  
+
+### Create Sensor To Target Table SHOULD BE MOVED TO THE OTHER SCRIPT  
+
+Create the `sensorTargetPairs` table: 
 
 ```{r}
 
@@ -125,18 +123,256 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          password = pgPass,
                          dbname = pgDb)
 
-sensors <- RPostgreSQL::dbGetQuery(conn = pgConn,
-                                      statement = "SELECT DISTINCT \"sensorId\" FROM \"sensorDescription\"")
+query_sensorTargetId <- "CREATE TABLE \"sensorTargetPairs\" (
+                   \"sensorTargetPairs_id\" SERIAL PRIMARY KEY,
+                   \"targetId\" TEXT,
+                   \"sensorId\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = query_sensorTargetId)
 
 RPostgreSQL::dbDisconnect(conn = pgConn)
 
-rm(pgConn)
+rm(pgConn,
+   query_sensorTargetId)
+
+```
+
+### Fill the Sensor To Target Table
+
+Create the sensorTargetPairs tibble:
+
+```{r}
+
+targetSensorPairs <- targetSensorPairs %>%
+  dplyr::mutate(sensorTargetPairs_id = NA,
+                runId = meta$runId,
+                designPoint = meta$designPoint,
+                iteration = meta$iteration) %>%
+  dplyr::select(sensorTargetPairs_id,
+                targetId,
+                sensorId,
+                runId,
+                designPoint,
+                iteration)
+
+```
+
+Write the Target-Sensor Pairs to the database and return them with their unique identifiers.  
+
+```{r}
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+query_sensorTargetPairs <- fillTableQuery(data = targetSensorPairs,tableName = "sensorTargetPairs")
+
+#> This is required because pg uses the unquoted `DEFAULT` for its auto-incrementing columns.
+query_sensorTargetPairs <- stringr::str_replace_all(string = query_sensorTargetPairs,
+                                                    pattern = "NULL",
+                                                    replacement = "DEFAULT")
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = query_sensorTargetPairs)
+
+sensorTargetPairsWithId <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                                   statement = sprintf("SELECT \"sensorTargetPairs_id\", \"targetId\", \"sensorId\" FROM \"sensorTargetPairs\" WHERE \"runId\" = '%s' AND \"designPoint\" = '%s' AND \"iteration\" = '%s'",
+                                                                       meta$runId,
+                                                                       meta$designPoint,
+                                                                       meta$iteration))
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn,
+   query_sensorTargetPairs)
 
 ```
 
 
+```{r}
+sensorTargetPairsWithId
+```
+
+## LOS and Acquisition State Table
+
+### Create LOS and Acquisition State Table SHOULD BE MOVED TO THE OTHER SCRIPT  
+
+Create the `losAcqState` table: 
+
+```{r}
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+query_losAcqState <- "CREATE TABLE \"losAcqState\" (
+                   \"losAcqState_id\" SERIAL PRIMARY KEY,
+                   \"time\" INTEGER,
+                   \"hasLOS\" BOOLEAN,
+                   \"hasAcquisition\" BOOLEAN,
+                   \"detectionLevel\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = query_losAcqState)
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn,
+   query_losAcqState)
+
+```
+```{r}
+
+sensorTargetPairsWithId[10,]
+
+# sensorTargetPairsWithIdAndTime <- sensorTargetPairsWithId %>%
+#   dplyr::mutate(time = list(0:maxTime))
+
+```
 
 
+```{r}
+### TEST 
+idx <- 65
+temp <- sensorTargetPairsWithId[10,]
+
+temp <- sensorTargetPairsWithId %>%
+  dplyr::filter(targetId == "11dc4f05-80b6-4f5c-a14a-76d2f0cca2aa",
+                sensorId == "090a08dd-7069-41fd-b83d-f50ebc090fd3")
+
+for(idx in 1:nrow(sensorTargetPairsWithId)){
+  
+  temp <- sensorTargetPairsWithId[idx,]
+  
+  query_sensTarPairLosState <- sprintf("SELECT \"time\",\"hasLOS\" FROM \"losState\" WHERE \"sensorId\"='%s' AND \"targetId\"='%s'",
+                                     temp$sensorId,
+                                     temp$targetId)
+  
+  query_sensTarPairAcqState <- sprintf("SELECT \"time\",\"detectionLevel\" FROM \"sensorAcqState\" WHERE \"sensorId\"='%s' AND \"targetId\"='%s'",
+                                     temp$sensorId,
+                                     temp$targetId)
+ 
+   pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+   sensTarPairLosState <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                                  statement = query_sensTarPairLosState)
+   
+   sensTarPairAcqState <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                                  statement = query_sensTarPairAcqState)
+
+   RPostgreSQL::dbDisconnect(conn = pgConn)
+   
+   rm(pgConn,
+      query_sensTarPairLosState,
+      query_sensTarPairAcqState)
+  
+     
+   working <- sensTarPairAcqState %>%
+     dplyr::mutate(hasAcquisition = dplyr::case_when(
+       detectionLevel == "SENSOR_NODETECTION" ~ FALSE,
+       TRUE ~ TRUE
+     )) %>%
+     dplyr::left_join(x = tibble::tibble(time = 0:maxTime),
+                      y = .,
+                      by = "time") %>%
+     dplyr::left_join(x = .,
+                      y = sensTarPairLosState,
+                      by = "time") %>%
+     tidyr::fill(hasLOS,
+                 .direction = "down") %>%
+     tidyr::fill(detectionLevel,
+                 .direction = "down") %>%
+     tidyr::fill(hasAcquisition,
+                 .direction = "down") %>%
+     tidyr::replace_na(replace = list(hasLOS = FALSE,
+                                      detectionLevel = "SENSOR_NODETECTION",
+                                      hasAcquisition = FALSE)) %>%
+     dplyr::mutate(losAcqState_id = NA,
+                   runId = meta$runId,
+                   designPoint = meta$designPoint,
+                   iteration = meta$iteration) %>%
+     dplyr::select(losAcqState_id,
+                   time,
+                   hasLOS,
+                   hasAcquisition,
+                   detectionLevel,
+                   runId,
+                   designPoint,
+                   iteration)
+   
+   begin <- 1
+   
+   for(rdx in 1:round(nrow(working)/1000)){
+     
+     message(paste0(rdx/round(nrow(working)/1000),"% Complete"))
+     
+     end <- rdx*1000
+     
+     if(rdx == round(nrow(working)/1000)){
+       
+       end <- nrow(working)
+       
+     }
+     
+     temp_query <- fillTableQuery(data =  working[begin:end,],
+                                  tableName = "losAcqState")
+     
+     temp_query <- stringr::str_replace_all(string = temp_query,
+                                            pattern = "NULL",
+                                            replacement = "DEFAULT")
+     
+     pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                              host = pgHost,
+                              port = pgPort,
+                              user = pgUser,
+                              password = pgPass,
+                              dbname = pgDb)
+     
+     RPostgreSQL::dbSendQuery(conn = pgConn,
+                              statement = temp_query)
+     
+     RPostgreSQL::dbDisconnect(conn = pgConn)
+     
+     rm(pgConn,
+        temp_query)
+     
+     begin <- end + 1
+     
+   }
+   
+   # Cound the number of true LOS
+  RPostgreSQL::dbGetQuery(conn = pgConn,
+                          statement = "SELECT count(*) FILTER (WHERE \"hasLOS\") FROM \"losAcqState\"")
+   
+    RPostgreSQL::dbGetQuery(conn = pgConn,
+                          statement = "SELECT * FROM \"losAcqState\"")
+    
+    RPostgreSQL::dbSendQuery(conn = pgConn,
+                              statement = "DROP TABLE \"losAcqState\"")
+   
+}
+
+
+
+```
 
 
 ```{r}
@@ -147,6 +383,17 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          user = pgUser,
                          password = pgPass,
                          dbname = pgDb)
+
+query_sensorTargetId <- "CREATE TABLE \"sensorTargetPairs\" (
+                   \"sensorTargetPairs_id\" SERIAL,
+                   \"sensorId\" TEXT,
+                   \"targetId\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = query_sensorTargetId)
 
 RPostgreSQL::dbListTables(conn = pgConn)
 
