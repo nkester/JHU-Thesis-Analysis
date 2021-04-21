@@ -13,6 +13,127 @@ knitr::opts_chunk$set(echo = TRUE,messages=FALSE)
 
 # Preparation
 
+## Create a Working PostgreSQL Database  
+
+It is helpful to have a working relational database in which you can store structured data during the analysis process. I am using PostgreSQL over MongoDB because it is a great way to store relational and structured data.  
+
+Previous to this I have created the database `modSim` in the PostgreSQL instance.  
+
+```{r}
+
+source("./connectionObjects/pgConnectionObj.R")
+
+library(RPostgreSQL)
+
+pgDb <- 'modSim'
+
+```
+
+### Create the Required Tables in the Database  
+
+These are the required tables:  
+
+```{r}
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+createSensorDescriptionTable <- 'CREATE TABLE \"sensorDescription\" (
+                   \"sensorId\" TEXT,
+                   \"acquireSensorType\" TEXT,
+                   \"magnification\" TEXT)'
+
+createEntityIdToNameTable <- 'CREATE TABLE \"entityIdToName\" (
+                   \"entityId\" TEXT,
+                   \"source\" TEXT)'
+
+createSensorToEntityIdTable <- 'CREATE TABLE \"sensorToEntityId\" (
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT)'
+
+createUnnestedSensorStateTable <- 'CREATE TABLE \"unnestedSensorState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time\" INTEGER,
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT,
+                   \"acquireSensorType\" TEXT,
+                   \"magnification\" TEXT,
+                   \"source\" TEXT)'
+
+createLosTable <- 'CREATE TABLE \"losState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time\" INTEGER,
+                   \"sensorId\" TEXT,
+                   \"targetId\" TEXT,
+                   \"changeNumber\" INTEGER,
+                   \"hasLOS\" BOOLEAN,
+                   \"hasLOSUpdateTime\" NUMERIC,
+                   \"characteristicDimension\" NUMERIC,
+                   \"characteristicDimensionUpdateTime\" NUMERIC,
+                   \"background\" TEXT,
+                   \"backgroundUpdateTime\" NUMERIC,
+                   \"nextUpdateTime\" NUMERIC)'
+
+createSensorAcq <- 'CREATE TABLE \"sensorAcqState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time\" INTEGER,
+                   \"receiverId\" TEXT,
+                   \"senderId\" TEXT,
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT,
+                   \"targetId\" TEXT,
+                   \"detectionLevel\" TEXT,
+                   \"previousDetectionLevel\" TEXT,
+                   \"timeToDetection\" NUMERIC)'
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createSensorDescriptionTable)
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createEntityIdToNameTable)
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createSensorToEntityIdTable)
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createUnnestedSensorStateTable)
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createLosTable)
+
+RPostgreSQL::dbSendQuery(conn = pgConn,
+                         statement = createSensorAcq)
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn,
+   createSensorDescriptionTable,
+   createEntityIdToNameTable,
+   createSensorToEntityIdTable,
+   createUnnestedSensorStateTable,
+   createLosTable,
+   createSensorAcq)
+
+```
+
+
+
 ## Create a Simulation and Entity Table  
 
 First, it is useful to understand information about the sensors and the entities that carried them in the specific "Design Point" and "Iteration" under evaluation. First, lets load the required query and connection object information and then execute the function.   
@@ -40,6 +161,24 @@ entitySensorMapping$SensorDescription
 
 ```  
 
+Write this table to the pg database:  
+
+```{r}
+
+query_sensorDescription <- fillTableQuery(data = entitySensorMapping$SensorDescription,tableName = "sensorDescription")
+
+
+sendPgFillTableQuery(query = query_sensorDescription,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_sensorDescription)
+```
+
+
 ### Entity ID to Entity Name  
 
 ```{r}
@@ -48,6 +187,24 @@ entitySensorMapping$EntityIdToName
 
 ```
 
+Write this table to the pg database:
+
+```{r}
+
+query_entityIdToName <- fillTableQuery(data = entitySensorMapping$EntityIdToName,tableName = "entityIdToName")
+
+sendPgFillTableQuery(query = query_entityIdToName,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_entityIdToName)
+
+```
+
+
 ### Sensor ID to Entity ID  
 
 ```{r}
@@ -55,6 +212,24 @@ entitySensorMapping$EntityIdToName
 entitySensorMapping$SensorToEntityId
 
 ```
+
+Write this table to the pg database:  
+
+```{r}
+
+query_sensorToEntityId <- fillTableQuery(data = entitySensorMapping$SensorToEntityId,tableName = "sensorToEntityId")
+
+sendPgFillTableQuery(query = query_sensorToEntityId,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_sensorToEntityId)
+
+```  
+
 
 ### Unnested Sensor State 
 
@@ -66,6 +241,22 @@ entitySensorMapping$UnnestedSensorState
 
 ```
 
+
+```{r}
+
+query_unnestedSensorState <- fillTableQuery(data = entitySensorMapping$UnnestedSensorState,
+                                            tableName = "unnestedSensorState")
+
+sendPgFillTableQuery(query = query_unnestedSensorState,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_unnestedSensorState)
+
+```
 
 
 
@@ -115,6 +306,23 @@ LosData
 
 ```
 
+Write LosData to the pg database
+
+```{r}
+query_losState <- fillTableQuery(data = LosData,
+                                 tableName = "losState")
+
+sendPgFillTableQuery(query = query_losState,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_losState)
+```
+
+
 ## Sensor Target Acquisitions
 
 Unlike the LOS table, this table shows the state of acquisition between each sensor target pair. It also shows the previous acquisition state so we can determine when the acquistion level changes.  
@@ -139,6 +347,24 @@ rm(acqMongoCollection,acqMongoFields,acqMongoQuery,mongoDb,mongoUri)
 sensorAcq
 ```
 
+```{r}
+
+query_sensorAcqState <- fillTableQuery(data = sensorAcq,
+                                       tableName = "sensorAcqState")
+
+sendPgFillTableQuery(query = query_sensorAcqState,
+                     host = pgHost,
+                     port = pgPort,
+                     user = pgUser,
+                     password = pgPass,
+                     dbname = pgDb)
+
+rm(query_sensorAcqState)
+
+```
+
+
+
 # TEMP Nested Tibbles  
 
 ## Max Time Value
@@ -146,30 +372,110 @@ sensorAcq
 Take the max from the sensor acquisition and los data frames.
 
 ```{r}
-maxTime <- max(max(sensorAcq$time),max(LosData$time))
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+maxLosTime <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT max(time) FROM \"losState\"")[[1]]
+
+maxSensorAcqTime <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT max(time) FROM \"sensorAcqState\"")[[1]]
+
+maxTime <- max(maxLosTime,
+    maxSensorAcqTime)
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn,
+   maxLosTime,
+   maxSensorAcqTime)
 ```
 
 ## Compile All Targets and All Sensors
 
 ```{r}
 
-targets <- dplyr::bind_rows(
-  dplyr::select(.data = sensorAcq,
-                targetId),
-  dplyr::select(.data = LosData,
-                targetId)
-) %>%
-  dplyr::distinct(targetId)
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+targetsAcq <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT DISTINCT \"targetId\" FROM \"sensorAcqState\"")
+
+targetsLos <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT DISTINCT \"targetId\" FROM \"losState\"")
+
+targets <- dplyr::bind_rows(targetsLos,targetsAcq) %>% dplyr::distinct(targetId)
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn,
+   targetsAcq,
+   targetsLos)
 
 ```
+
+
 
 ```{r}
 
-sensors <- dplyr::distinct(entitySensorMapping$SensorToEntityId,sensorId)
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
 
-sensors
+sensors <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT DISTINCT \"sensorId\" FROM \"sensorDescription\"")
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn)
 
 ```
+
+
+
+
+
+
+```{r}
+### TEMP WORKING AREA
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgHost,
+                         port = pgPort,
+                         user = pgUser,
+                         password = pgPass,
+                         dbname = pgDb)
+
+RPostgreSQL::dbListTables(conn = pgConn)
+
+RPostgreSQL::dbListFields(conn = pgConn,name = "sensorDescription")
+
+sensors <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT DISTINCT \"sensorId\" FROM \"sensorDescription\"")
+
+targetsLos <- RPostgreSQL::dbGetQuery(conn = pgConn,
+                                      statement = "SELECT DISTINCT \"targetId\" FROM \"losState\"")
+
+targets <- dplyr::bind_rows(targetsLos,targetsAcq) %>% dplyr::distinct(targetId)
+
+RPostgreSQL::dbListFields(conn = pgConn,name = "sensorAcqState")
+
+RPostgreSQL::dbDisconnect(conn = pgConn)
+
+rm(pgConn)
+```
+
 
 
 ## Create a Nested Tibble  
@@ -308,6 +614,9 @@ xyv <- xyv %>%
 
 ```
 
+```{r}
+jsonlite::toJSON(xyv[1,2][[1]][[1]])
+```
 
 
 ```{r}
