@@ -250,14 +250,20 @@ temp <- sensorTargetPairsWithId %>%
 
 # sensorTargetPairsWithIdAndTime <- sensorTargetPairsWithId %>%
 #   dplyr::mutate(time = list(0:maxTime))
-
+rm(idx,working)
 ```
 
 
 ```{r}
 
+#> Useful sources: '%EPBV 90 1', '%EPBV 90 2', **'%BM30 6',
+#pgFuzzyMatches <- '%EPBV 90 1'
+
+startTime <- Sys.time()
+
 for(idx in 1:nrow(sensorTargetPairsWithId)){
-  
+  message(paste0("Target-Sensor Pair ",idx," of ",nrow(sensorTargetPairsWithId)))
+  message(paste0("Run Time: ",Sys.time() - startTime))
   temp <- sensorTargetPairsWithId[idx,]
   
   query_sensTarPairLosState <- sprintf("SELECT \"time\",\"hasLOS\" FROM \"losState\" WHERE \"sensorId\"='%s' AND \"targetId\"='%s'",
@@ -321,65 +327,97 @@ for(idx in 1:nrow(sensorTargetPairsWithId)){
                    detectionLevel,
                    runId,
                    designPoint,
-                   iteration)
+                   iteration) %>%
+      dplyr::filter(hasLOS | hasAcquisition)
+     
    
    begin <- 1
    
-   for(rdx in 1:round(nrow(working)/1000)){
+   if(nrow(working)>0){
      
-     message(paste0(rdx/round(nrow(working)/1000)*100,"% Complete"))
-     
-     end <- rdx*1000
-     
-     if(rdx == round(nrow(working)/1000)){
+     if(nrow(working)>=1000){
        
-       end <- nrow(working)
+       chunk <- 1000
+       
+     }else{
+       
+       chunk <- 1
        
      }
      
-     temp_query <- fillTableQuery(data =  working[begin:end,],
-                                  tableName = "losAcqState")
-     
-     temp_query <- stringr::str_replace_all(string = temp_query,
-                                            pattern = "NULL",
-                                            replacement = "DEFAULT")
-     
-     pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
-                              host = pgHost,
-                              port = pgPort,
-                              user = pgUser,
-                              password = pgPass,
-                              dbname = pgDb)
-     
-     RPostgreSQL::dbSendQuery(conn = pgConn,
-                              statement = temp_query)
-     
-     RPostgreSQL::dbDisconnect(conn = pgConn)
-     
-     rm(pgConn,
-        temp_query)
-     
-     begin <- end + 1
+     for(rdx in 1:round(nrow(working)/chunk)){
+       
+       message(paste0(trunc(rdx/round(nrow(working)/chunk)*100),"% of chunk complete"))
+       
+       end <- rdx*chunk
+       
+       if(rdx == round(nrow(working)/chunk)){
+         
+         end <- nrow(working)
+         
+       }
+       
+       temp_query <- fillTableQuery(data =  working[begin:end,],
+                                    tableName = "losAcqState")
+       
+       temp_query <- stringr::str_replace_all(string = temp_query,
+                                              pattern = "NULL",
+                                              replacement = "DEFAULT")
+       
+       pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                                host = pgHost,
+                                port = pgPort,
+                                user = pgUser,
+                                password = pgPass,
+                                dbname = pgDb)
+       
+       RPostgreSQL::dbSendQuery(conn = pgConn,
+                                statement = temp_query)
+       
+       RPostgreSQL::dbDisconnect(conn = pgConn)
+       
+       rm(pgConn,
+          temp_query)
+       
+       begin <- end + 1
+       
+     }
      
    }
    
-   # Cound the number of true LOS
+ rm(working)
+   
+} # close idx
+endTime <- Sys.time()
+```
+```{r}
+
+working %>%
+  dplyr::filter(hasLOS | hasAcquisition)
+#dplyr::filter(any(hasLOS,hasAcquisition))
+
+```
+
+
+```{r}
+  # Cound the number of true LOS
   RPostgreSQL::dbGetQuery(conn = pgConn,
-                          statement = "SELECT count(*) FILTER (WHERE \"hasLOS\") FROM \"losAcqState\"")
+                          statement = "SELECT count(*) FILTER (WHERE \"hasLOS\") FROM \"losAcqState\"") # 7933410
+
+  RPostgreSQL::dbGetQuery(conn = pgConn,
+                          statement = "SELECT count(*) FILTER (WHERE \"hasAcquisition\") FROM \"losAcqState\"") #3902776
    
     peek <- RPostgreSQL::dbGetQuery(conn = pgConn,
                           statement = "SELECT * FROM \"losAcqState\" LIMIT 10")
     
     RPostgreSQL::dbSendQuery(conn = pgConn,
                               statement = "DROP TABLE \"losAcqState\"")
-   
-} # close idx
-
 working
 
 ```
 ```{r}
-working2
+RPostgreSQL::dbGetQuery(conn = pgConn,
+                        statement = "SELECT * FROM \"losAcqState\"")
 ```
 
 
