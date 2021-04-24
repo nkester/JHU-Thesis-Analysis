@@ -59,7 +59,6 @@ fct_low_createModSim <- function(connParamList){
                    \"designPoint\" TEXT,
                    \"iteration\" TEXT,
                    \"time_ms\" INTEGER,
-                   \"time_s\" INTEGER,
                    \"sensorId\" TEXT,
                    \"entityId\" TEXT,
                    \"acquireSensorType\" TEXT,

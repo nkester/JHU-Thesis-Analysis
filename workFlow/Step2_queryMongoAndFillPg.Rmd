@@ -161,6 +161,34 @@ function(mongoConnParam){
     
   } # close sensorToEntityId section
   
+  { # unnestedSensorState ----
+    
+    #> This is the full set of un-nested data from the original query. While not truly "raw", this could be considered the original data set.
+    
+    entitySensorMapping$UnnestedSensorState <- entitySensorMapping$UnnestedSensorState %>%
+      dplyr::rename(.data = .,
+                    "id" = "_id",
+                    "time_ms" = "time")
+    
+    query_unnestedSensorState <- fillTableQuery(data = entitySensorMapping$UnnestedSensorState,
+                                                tableName = paste0("\"unnestedSensorState\" (",
+                                                                   paste0("\"",
+                                                                          names(entitySensorMapping$UnnestedSensorState),
+                                                                          "\"",
+                                                                          collapse = ","),
+                                                                   ")"))
+    
+    sendPgFillTableQuery(query = query_unnestedSensorState,
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+    
+    rm(query_unnestedSensorState)
+    
+  } # close unnestedSensorState section
+  
 } # close Transform and Load section
 
 ```
@@ -175,18 +203,18 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          dbname = pgConnParam[["pgDb"]])
 
 DBI::dbSendQuery(conn = pgConn,
-                 statement = createSensorToEntityIdTable)
+                 statement = createUnnestedSensorStateTable)
 
 DBI::dbListTables(conn = pgConn)
 
 DBI::dbListFields(conn = pgConn,
-                  name = "entityIdToName")
+                  name = "unnestedSensorState")
 
 DBI::dbGetQuery(conn = pgConn,
-               statement = "SELECT * FROM \"sensorToEntityId\"")
+               statement = "SELECT * FROM \"unnestedSensorState\"")
 
 DBI::dbSendQuery(conn = pgConn,
-                 statement = "DROP TABLE \"sensorToEntityId\"")
+                 statement = "DROP TABLE \"unnestedSensorState\"")
 
 DBI::dbDisconnect(conn = pgConn)
 
