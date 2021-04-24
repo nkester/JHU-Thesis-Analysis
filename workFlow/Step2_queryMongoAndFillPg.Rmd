@@ -1,0 +1,102 @@
+---
+title: 'Step 2: Query MongoDB, transform data, and write to PostreSQL DB'
+author: "Neil Kester"
+date: "4/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      messages = FALSE)
+```
+
+# Purpose
+
+These functions execute the extract, transform, and load (ETL) steps taking the data required to support analysis from the simulation's MongoDB logs, structuring and relating it, and then loading it into a relational database (in this case PostgreSQL) in preparation for later analysis.  
+
+# Low Functions  
+
+## Sensor to Entity Mapping  
+
+This is already implemented in my `{modSim}` package.
+
+**Work to do: Confirm `SensorDescription`, `EntityIdToName`, and `SensorToEntityId` does not need to be split out by iteration. I think not**
+
+**__Note__: This query should not include an iteration filter. Ideally, this is used once per design point.**
+
+```{r}
+
+source("./connectionObjects/entityMappingConnectionObj.R")
+
+function(mongoConnParam){
+  
+  requireNamespace(package = "magrittr")
+  
+}
+
+entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoConnParam[["mongoUri"]],
+                                                     mongoDb = mongoConnParam[["mongoDb"]],
+                                                     mongoCollection = mongoConnParam[["collection"]],
+                                                     mongoFields = mongoConnParam[["fields"]],
+                                                     mongoQuery = mongoConnParam[["query"]])
+
+metaData <- entitySensorMapping$UnnestedSensorState %>%
+  dplyr::distinct(.data = .,
+                  runId,
+                  designPoint,
+                  iteration)
+
+{ # Create data frame and query for sensorDescription and send to pg ----
+  
+  entitySensorMapping$SensorDescription <- entitySensorMapping$SensorDescription %>%
+    dplyr::mutate(.data = .,
+                  designPoint = dplyr::distinct(metaData,
+                                                designPoint)[[1]])
+  
+  query_sensorDescription <- fillTableQuery(data = entitySensorMapping$SensorDescription,
+                                            tableName = paste0("\"sensorDescription\" (",
+                                                               paste0("\"",
+                                                                      names(entitySensorMapping$SensorDescription),
+                                                                      "\"",
+                                                                      collapse = ","),
+                                                               ")"))
+  
+  sendPgFillTableQuery(query = query_sensorDescription,
+                       host = pgConnParam[["pgHost"]],
+                       port = pgConnParam[["pgPort"]],
+                       user = pgConnParam[["pgUser"]],
+                       password = pgConnParam[["pgPass"]],
+                       dbname = pgConnParam[["pgDb"]])
+  
+  rm(query_sensorDescription)
+  
+  } # close Create data frame and query for sensorDescription and send to pg section
+
+{ # Create data frame and query for entityIdToName and send to pg ----
+  
+} # close Create data frame and query for entityIdToName and send to pg
+
+```
+
+```{r scratch}
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+
+DBI::dbSendQuery(conn = pgConn,
+                 statement = createSensorDescriptionTable)
+
+DBI::dbListTables(conn = pgConn)
+
+DBI::dbListFields(conn = pgConn,
+                  name = "sensorDescription")
+
+DBI::dbGetQuery(conn = pgConn,
+               statement = "SELECT * FROM \"sensorDescription\"")
+
+```
+

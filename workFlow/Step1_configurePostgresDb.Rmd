@@ -1,0 +1,204 @@
+---
+title: 'Step 1: Configure PostreSQL DB'
+author: "Neil Kester"
+date: "4/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      messages = FALSE)
+```
+
+# Purpose
+
+These functions are executed once to establish the database and its tables in the Analytic Environment's PostgreSQL instance. They assume the `modSim` database does not already exist.
+
+## Create the `modSim` Database and All Required Tables  
+
+Read in the list of PostgreSQL connection parameters and add the data base name to that list.
+
+```{r fct_low_createModSim}
+
+source("./connectionObjects/pgConnectionObj.R")
+
+pgConnParam[["pgDb"]] <- "modSim2"
+
+fct_low_createModSim <- function(connParamList){
+  
+  { # Write Query Statements 
+    
+    createDatabase <- sprintf("CREATE DATABASE \"%s\"",
+                              connParamList[["pgDb"]])
+    
+    createSensorDescriptionTable <- "CREATE TABLE IF NOT EXISTS \"sensorDescription\" (
+                   \"sensorId\" TEXT,
+                   \"acquireSensorType\" TEXT,
+                   \"magnification\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+    
+    createEntityIdToNameTable <- "CREATE TABLE IF NOT EXISTS \"entityIdToName\" (
+                   \"entityId\" TEXT,
+                   \"source\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+    
+    createSensorToEntityIdTable <- "CREATE TABLE IF NOT EXISTS \"sensorToEntityId\" (
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT,
+                   \"runId\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT)"
+    
+    createUnnestedSensorStateTable <- "CREATE TABLE IF NOT EXISTS \"unnestedSensorState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time_ms\" INTEGER,
+                   \"time_s\" INTEGER,
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT,
+                   \"acquireSensorType\" TEXT,
+                   \"magnification\" TEXT,
+                   \"source\" TEXT)"
+    
+    createLosTable <- "CREATE TABLE IF NOT EXISTS \"losState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time_ms\" INTEGER,
+                   \"time_s\" INTEGER,
+                   \"sensorId\" TEXT,
+                   \"targetId\" TEXT,
+                   \"changeNumber\" INTEGER,
+                   \"hasLOS\" BOOLEAN,
+                   \"hasLOSUpdateTime\" NUMERIC,
+                   \"characteristicDimension\" NUMERIC,
+                   \"characteristicDimensionUpdateTime\" NUMERIC,
+                   \"background\" TEXT,
+                   \"backgroundUpdateTime\" NUMERIC,
+                   \"nextUpdateTime\" NUMERIC)"
+    
+    createSensorAcq <- "CREATE TABLE IF NOT EXISTS \"sensorAcqState\" (
+                   \"id\" TEXT,
+                   \"runId\" TEXT,
+                   \"runTime\" TEXT,
+                   \"designPoint\" TEXT,
+                   \"iteration\" TEXT,
+                   \"time_ms\" INTEGER,
+                   \"time_s\" INTEGER,
+                   \"receiverId\" TEXT,
+                   \"senderId\" TEXT,
+                   \"sensorId\" TEXT,
+                   \"entityId\" TEXT,
+                   \"targetId\" TEXT,
+                   \"detectionLevel\" TEXT,
+                   \"previousDetectionLevel\" TEXT,
+                   \"timeToDetection\" NUMERIC)"
+    
+  } # close Write Query Statements
+  
+  { # Connect and send queries
+    
+    { # Check if the database already exists
+      
+      pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                               host = connParamList[["pgHost"]],
+                               port = connParamList[["pgPort"]],
+                               user = connParamList[["pgUser"]],
+                               password = connParamList[["pgPass"]])
+      
+      existingDatabases <- DBI::dbGetQuery(conn = pgConn,
+                                           statement = "SELECT * FROM pg_database")$datname
+      
+      if(connParamList[["pgDb"]] %in% existingDatabases){
+        
+        message(sprintf("%s Database already exists, moving on to creating tables",
+                        connParamList[["pgDb"]]))
+        
+      }else{
+        
+        DBI::dbSendQuery(conn = pgConn,
+                         statement = createDatabase)
+        
+        message(sprintf("%s Database created! Moving on to creating tables",
+                        connParamList[["pgDb"]]))
+        
+      } # close else
+      
+      DBI::dbDisconnect(conn = pgConn)
+      
+      rm(pgConn)
+      
+    } # close Check if the database already exists
+    
+    { # Connect to the supplied database and create tables if they do not exist
+      
+      pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                               host = connParamList[["pgHost"]],
+                               port = connParamList[["pgPort"]],
+                               user = connParamList[["pgUser"]],
+                               password = connParamList[["pgPass"]],
+                               dbname = connParamList[["pgDb"]])
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createSensorDescriptionTable)
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createEntityIdToNameTable)
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createSensorToEntityIdTable)
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createUnnestedSensorStateTable)
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createLosTable)
+      
+      DBI::dbSendQuery(conn = pgConn,
+                       statement = createSensorAcq)
+      
+    } # close Connect to the supplied database and create tables if they do not exist
+    
+  } # close Connect and send queries
+  
+  message(sprintf("Complete: The %s database exists and all tables have been created!",
+                  connParamList[["pgDb"]]))
+  
+} # fct_low_createModSim
+```  
+
+Execute the `fct_low_createModSim` function:  
+
+```{r}
+
+fct_low_createModSim(connParamList = pgConnParam)
+
+```  
+Check  
+
+```{r}
+
+pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
+                               host = pgConnParam[["pgHost"]],
+                               port = pgConnParam[["pgPort"]],
+                               user = pgConnParam[["pgUser"]],
+                               password = pgConnParam[["pgPass"]],
+                               dbname = pgConnParam[["pgDb"]])
+
+DBI::dbListTables(conn = pgConn)  
+
+DBI::dbListFields(conn = pgConn,
+                  name = "losState")
+
+```
+
+
