@@ -74,6 +74,36 @@ metaData <- entitySensorMapping$UnnestedSensorState %>%
 
 { # Create data frame and query for entityIdToName and send to pg ----
   
+  entitySensorMapping$EntityIdToName <- entitySensorMapping$EntityIdToName %>%
+    dplyr::mutate(.data = .,
+                  designPoint = meta$designPoint,
+                  force = dplyr::case_when(
+                    stringr::str_detect(string = source,
+                                        pattern = "^(?i)(blueforce)") ~ "BLUEFORCE",
+                    stringr::str_detect(string = source,
+                                        pattern = "^(?i)(redforce)") ~ "REDFORCE",
+                    TRUE ~ "OTHER"
+                  ),
+                  shortName = stringr::str_extract(string = source,
+                                                   pattern = "[^/]*$"))
+  
+  query_entityIdToName <- fillTableQuery(data = entitySensorMapping$EntityIdToName,
+                 tableName = paste0("\"entityIdToName\" (",
+                                    paste0("\"",
+                                           names(entitySensorMapping$EntityIdToName),
+                                           "\"",
+                                           collapse = ","),
+                                    ")"))
+  
+  sendPgFillTableQuery(query = query_entityIdToName,
+                       host = pgConnParam[["pgHost"]],
+                       port = pgConnParam[["pgPort"]],
+                       user = pgConnParam[["pgUser"]],
+                       password = pgConnParam[["pgPass"]],
+                       dbname = pgConnParam[["pgDb"]])
+  
+  rm(query_entityIdToName)
+  
 } # close Create data frame and query for entityIdToName and send to pg
 
 ```
@@ -88,15 +118,22 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          dbname = pgConnParam[["pgDb"]])
 
 DBI::dbSendQuery(conn = pgConn,
-                 statement = createSensorDescriptionTable)
+                 statement = createEntityIdToNameTable)
 
 DBI::dbListTables(conn = pgConn)
 
 DBI::dbListFields(conn = pgConn,
-                  name = "sensorDescription")
+                  name = "entityIdToName")
 
 DBI::dbGetQuery(conn = pgConn,
-               statement = "SELECT * FROM \"sensorDescription\"")
+               statement = "SELECT * FROM \"entityIdToName\"")
+
+DBI::dbSendQuery(conn = pgConn,
+                 statement = "DROP TABLE \"entityIdToName\"")
+
+DBI::dbDisconnect(conn = pgConn)
+
+rm(pgConn)
 
 ```
 

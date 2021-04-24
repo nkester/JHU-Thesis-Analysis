@@ -40,9 +40,9 @@ fct_low_createModSim <- function(connParamList){
     createEntityIdToNameTable <- "CREATE TABLE IF NOT EXISTS \"entityIdToName\" (
                    \"entityId\" TEXT,
                    \"source\" TEXT,
-                   \"runId\" TEXT,
                    \"designPoint\" TEXT,
-                   \"iteration\" TEXT)"
+                   \"force\" TEXT,
+                   \"shortName\" TEXT)"
     
     createSensorToEntityIdTable <- "CREATE TABLE IF NOT EXISTS \"sensorToEntityId\" (
                    \"sensorId\" TEXT,
