@@ -66,13 +66,14 @@ fct_low_createModSim <- function(connParamList){
                    \"source\" TEXT)"
     
     createLosTable <- "CREATE TABLE IF NOT EXISTS \"losState\" (
+                   \"losState_pkId\" SERIAL PRIMARY KEY,
                    \"id\" TEXT,
                    \"runId\" TEXT,
                    \"runTime\" TEXT,
                    \"designPoint\" TEXT,
                    \"iteration\" TEXT,
                    \"time_ms\" INTEGER,
-                   \"time_s\" INTEGER,
+                   \"time_s\" NUMERIC,
                    \"sensorId\" TEXT,
                    \"targetId\" TEXT,
                    \"changeNumber\" INTEGER,
@@ -85,13 +86,14 @@ fct_low_createModSim <- function(connParamList){
                    \"nextUpdateTime\" NUMERIC)"
     
     createSensorAcq <- "CREATE TABLE IF NOT EXISTS \"sensorAcqState\" (
+                   \"sensorAcqState_pkId\" SERIAL PRIMARY KEY,
                    \"id\" TEXT,
                    \"runId\" TEXT,
                    \"runTime\" TEXT,
                    \"designPoint\" TEXT,
                    \"iteration\" TEXT,
                    \"time_ms\" INTEGER,
-                   \"time_s\" INTEGER,
+                   \"time_s\" NUMERIC,
                    \"receiverId\" TEXT,
                    \"senderId\" TEXT,
                    \"sensorId\" TEXT,
