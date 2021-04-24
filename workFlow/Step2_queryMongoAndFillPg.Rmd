@@ -34,77 +34,134 @@ function(mongoConnParam){
   
 }
 
-entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoConnParam[["mongoUri"]],
-                                                     mongoDb = mongoConnParam[["mongoDb"]],
-                                                     mongoCollection = mongoConnParam[["collection"]],
-                                                     mongoFields = mongoConnParam[["fields"]],
-                                                     mongoQuery = mongoConnParam[["query"]])
+{ # Extract ----
+  
+  { # Query MongoDb and unnest information about sensors and entities ----
+    
+    entitySensorMapping <- modSim::mapSensorsAndEntities(mongoUri = mongoConnParam[["mongoUri"]],
+                                                         mongoDb = mongoConnParam[["mongoDb"]],
+                                                         mongoCollection = mongoConnParam[["collection"]],
+                                                         mongoFields = mongoConnParam[["fields"]],
+                                                         mongoQuery = mongoConnParam[["query"]])
+    
+    metaData <- entitySensorMapping$UnnestedSensorState %>%
+      dplyr::distinct(.data = .,
+                      runId,
+                      designPoint,
+                      iteration)
+    
+  } # close Query MongoDb and unnest information about sensors and entities section
+  
+} # close Extract section
 
-metaData <- entitySensorMapping$UnnestedSensorState %>%
-  dplyr::distinct(.data = .,
-                  runId,
-                  designPoint,
-                  iteration)
-
-{ # Create data frame and query for sensorDescription and send to pg ----
+{ # Transform and Load ----
   
-  entitySensorMapping$SensorDescription <- entitySensorMapping$SensorDescription %>%
-    dplyr::mutate(.data = .,
-                  designPoint = dplyr::distinct(metaData,
-                                                designPoint)[[1]])
+  { # sensorDescription ----
+    
+    entitySensorMapping$SensorDescription <- entitySensorMapping$SensorDescription %>%
+      dplyr::mutate(.data = .,
+                    designPoint = dplyr::distinct(metaData,
+                                                  designPoint)[[1]],
+                    sensorId_pkId = NA)
+    
+    query_sensorDescription <- fillTableQuery(data = entitySensorMapping$SensorDescription,
+                                              tableName = paste0("\"sensorDescription\" (",
+                                                                 paste0("\"",
+                                                                        names(entitySensorMapping$SensorDescription),
+                                                                        "\"",
+                                                                        collapse = ","),
+                                                                 ")"))
+    
+    #> This is required because pg uses the unquoted `DEFAULT` for its auto-incrementing columns.
+    query_sensorDescription <- stringr::str_replace_all(string = query_sensorDescription,
+                                                        pattern = "NULL",
+                                                        replacement = "DEFAULT")
+    
+    sendPgFillTableQuery(query = query_sensorDescription,
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+    
+    rm(query_sensorDescription)
+    
+  } # close sensorDescription section
   
-  query_sensorDescription <- fillTableQuery(data = entitySensorMapping$SensorDescription,
-                                            tableName = paste0("\"sensorDescription\" (",
-                                                               paste0("\"",
-                                                                      names(entitySensorMapping$SensorDescription),
-                                                                      "\"",
-                                                                      collapse = ","),
-                                                               ")"))
+  { # entityIdToName ----
+    
+    entitySensorMapping$EntityIdToName <- entitySensorMapping$EntityIdToName %>%
+      dplyr::mutate(.data = .,
+                    designPoint = dplyr::distinct(metaData,
+                                                  designPoint)[[1]],
+                    force = dplyr::case_when(
+                      stringr::str_detect(string = source,
+                                          pattern = "^(?i)(blueforce)") ~ "BLUEFORCE",
+                      stringr::str_detect(string = source,
+                                          pattern = "^(?i)(redforce)") ~ "REDFORCE",
+                      TRUE ~ "OTHER"
+                    ),
+                    shortName = stringr::str_extract(string = source,
+                                                     pattern = "[^/]*$"),
+                    entityId_pkId = NA)
+    
+    query_entityIdToName <- fillTableQuery(data = entitySensorMapping$EntityIdToName,
+                                           tableName = paste0("\"entityIdToName\" (",
+                                                              paste0("\"",
+                                                                     names(entitySensorMapping$EntityIdToName),
+                                                                     "\"",
+                                                                     collapse = ","),
+                                                              ")"))
+    
+     #> This is required because pg uses the unquoted `DEFAULT` for its auto-incrementing columns.
+    query_entityIdToName <- stringr::str_replace_all(string = query_entityIdToName,
+                                                        pattern = "NULL",
+                                                        replacement = "DEFAULT")
+    
+    sendPgFillTableQuery(query = query_entityIdToName,
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+    
+    rm(query_entityIdToName)
+    
+  } # close entityIdToName section
   
-  sendPgFillTableQuery(query = query_sensorDescription,
-                       host = pgConnParam[["pgHost"]],
-                       port = pgConnParam[["pgPort"]],
-                       user = pgConnParam[["pgUser"]],
-                       password = pgConnParam[["pgPass"]],
-                       dbname = pgConnParam[["pgDb"]])
+  { # sensorToEntityId ---- 
+    
+    entitySensorMapping$SensorToEntityId <- entitySensorMapping$SensorToEntityId %>%
+      dplyr::mutate(.data = .,
+                    designPoint = dplyr::distinct(metaData,
+                                                  designPoint)[[1]],
+                    sensorToEntityId_pkId = NA)
+    
+    query_sensorToEntityId <- fillTableQuery(data = entitySensorMapping$SensorToEntityId,
+                                           tableName = paste0("\"sensorToEntityId\" (",
+                                                              paste0("\"",
+                                                                     names(entitySensorMapping$SensorToEntityId),
+                                                                     "\"",
+                                                                     collapse = ","),
+                                                              ")"))
+    
+     #> This is required because pg uses the unquoted `DEFAULT` for its auto-incrementing columns.
+    query_sensorToEntityId <- stringr::str_replace_all(string = query_sensorToEntityId,
+                                                        pattern = "NULL",
+                                                        replacement = "DEFAULT")
+    
+    sendPgFillTableQuery(query = query_sensorToEntityId,
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+    
+    rm(query_sensorToEntityId)
+    
+  } # close sensorToEntityId section
   
-  rm(query_sensorDescription)
-  
-  } # close Create data frame and query for sensorDescription and send to pg section
-
-{ # Create data frame and query for entityIdToName and send to pg ----
-  
-  entitySensorMapping$EntityIdToName <- entitySensorMapping$EntityIdToName %>%
-    dplyr::mutate(.data = .,
-                  designPoint = meta$designPoint,
-                  force = dplyr::case_when(
-                    stringr::str_detect(string = source,
-                                        pattern = "^(?i)(blueforce)") ~ "BLUEFORCE",
-                    stringr::str_detect(string = source,
-                                        pattern = "^(?i)(redforce)") ~ "REDFORCE",
-                    TRUE ~ "OTHER"
-                  ),
-                  shortName = stringr::str_extract(string = source,
-                                                   pattern = "[^/]*$"))
-  
-  query_entityIdToName <- fillTableQuery(data = entitySensorMapping$EntityIdToName,
-                 tableName = paste0("\"entityIdToName\" (",
-                                    paste0("\"",
-                                           names(entitySensorMapping$EntityIdToName),
-                                           "\"",
-                                           collapse = ","),
-                                    ")"))
-  
-  sendPgFillTableQuery(query = query_entityIdToName,
-                       host = pgConnParam[["pgHost"]],
-                       port = pgConnParam[["pgPort"]],
-                       user = pgConnParam[["pgUser"]],
-                       password = pgConnParam[["pgPass"]],
-                       dbname = pgConnParam[["pgDb"]])
-  
-  rm(query_entityIdToName)
-  
-} # close Create data frame and query for entityIdToName and send to pg
+} # close Transform and Load section
 
 ```
 
@@ -118,7 +175,7 @@ pgConn <- DBI::dbConnect(drv = RPostgreSQL::PostgreSQL(),
                          dbname = pgConnParam[["pgDb"]])
 
 DBI::dbSendQuery(conn = pgConn,
-                 statement = createEntityIdToNameTable)
+                 statement = createSensorToEntityIdTable)
 
 DBI::dbListTables(conn = pgConn)
 
@@ -126,10 +183,10 @@ DBI::dbListFields(conn = pgConn,
                   name = "entityIdToName")
 
 DBI::dbGetQuery(conn = pgConn,
-               statement = "SELECT * FROM \"entityIdToName\"")
+               statement = "SELECT * FROM \"sensorToEntityId\"")
 
 DBI::dbSendQuery(conn = pgConn,
-                 statement = "DROP TABLE \"entityIdToName\"")
+                 statement = "DROP TABLE \"sensorToEntityId\"")
 
 DBI::dbDisconnect(conn = pgConn)
 

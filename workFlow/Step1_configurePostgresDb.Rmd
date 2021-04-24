@@ -32,12 +32,14 @@ fct_low_createModSim <- function(connParamList){
                               connParamList[["pgDb"]])
     
     createSensorDescriptionTable <- "CREATE TABLE IF NOT EXISTS \"sensorDescription\" (
+                   \"sensorId_pkId\" SERIAL PRIMARY KEY,
                    \"sensorId\" TEXT,
                    \"acquireSensorType\" TEXT,
                    \"magnification\" TEXT,
                    \"designPoint\" TEXT)"
     
     createEntityIdToNameTable <- "CREATE TABLE IF NOT EXISTS \"entityIdToName\" (
+                   \"entityId_pkId\" SERIAL PRIMARY KEY,
                    \"entityId\" TEXT,
                    \"source\" TEXT,
                    \"designPoint\" TEXT,
@@ -45,11 +47,10 @@ fct_low_createModSim <- function(connParamList){
                    \"shortName\" TEXT)"
     
     createSensorToEntityIdTable <- "CREATE TABLE IF NOT EXISTS \"sensorToEntityId\" (
+                   \"sensorToEntityId_pkId\" SERIAL PRIMARY KEY,
                    \"sensorId\" TEXT,
                    \"entityId\" TEXT,
-                   \"runId\" TEXT,
-                   \"designPoint\" TEXT,
-                   \"iteration\" TEXT)"
+                   \"designPoint\" TEXT)"
     
     createUnnestedSensorStateTable <- "CREATE TABLE IF NOT EXISTS \"unnestedSensorState\" (
                    \"id\" TEXT,
