@@ -213,6 +213,8 @@ fct_low_etlSensorToEntityMappingTables(mongoConnParam = mongoConnParam,
 
 ## Line of Sight Tables  
 
+This table describes when a sensor target has Line of Sight (LOS). This does not mean they have acquired each other but rather that their line of sight is not obstructed. 
+
 ```{r fct_low_etlLosData}
 
 source("./connectionObjects/hasLosConnectionObj.R")
@@ -278,6 +280,76 @@ fct_low_etlLosData(mongoConnParam = mongoConnParam,
                    pgConnParam = pgConnParam)
 
 ```
+## Sensor Acquisition State Tables  
+
+Unlike the LOS table, this table shows the state of acquisition between each sensor target pair. It also shows the previous acquisition state so we can determine when the acquistion level changes. 
+
+```{r fct_low_etlSensorAcq}
+
+source("./connectionObjects/acqConnectionObj.R")
+
+fct_low_etlSensorAcq <- function(mongoConnParam,pgConnParam){
+  
+  requireNamespace(package = "magrittr")
+  
+  { # Extract ----
+    
+    message("Extracting data from the MongoDB")
+    
+    sensorAcqData <- modSim::sensorAcquisition(mongoUri = mongoConnParam[["mongoUri"]],
+                                               mongoDb = mongoConnParam[["mongoDb"]],
+                                               mongoCollection = mongoConnParam[["collection"]],
+                                               mongoQuery = mongoConnParam[["query"]],
+                                               mongoFields = mongoConnParam[["fields"]],
+                                               recursiveUnnests = c("event",
+                                                                    "messageData", 
+                                                                    "any", 
+                                                                    "sensorDetection"))
+  
+  } # close Extract 
+  
+  { # Transform and Load ----
+    
+    message("Transforming and loading losData")
+    
+    sensorAcqData <- sensorAcqData %>%
+      dplyr::rename("id" = "_id",
+                    "time_ms" = "time") %>%
+      dplyr::mutate(time_s = time_ms/1000,
+                    sensorAcqState_pkId = NA)
+    
+    query_sensorAcqData <- fillTableQuery(data = sensorAcqData,
+                                          tableName = paste0("\"sensorAcqState\" (",
+                                                             paste0("\"",
+                                                                    names(sensorAcqData),
+                                                                    "\"",
+                                                                    collapse = ","),
+                                                             ")"))
+    
+    #> This is required because pg uses the unquoted `DEFAULT` for its auto-incrementing columns.
+    query_sensorAcqData <- stringr::str_replace_all(string = query_sensorAcqData,
+                                                    pattern = "NULL",
+                                                    replacement = "DEFAULT")
+    
+    sendPgFillTableQuery(query = query_sensorAcqData,
+                         host = pgConnParam[["pgHost"]],
+                         port = pgConnParam[["pgPort"]],
+                         user = pgConnParam[["pgUser"]],
+                         password = pgConnParam[["pgPass"]],
+                         dbname = pgConnParam[["pgDb"]])
+    
+  } # close Transform and Load
+  
+} # close fct_low_etlSensorAcq
+
+```
+
+```{r test_fct_low_etlSensorAcq}
+
+fct_low_etlSensorAcq(mongoConnParam = mongoConnParam,
+                     pgConnParam = pgConnParam)
+
+```
 
 
 ```{r scratch}
@@ -298,8 +370,7 @@ DBI::dbListFields(conn = pgConn,
                   name = "unnestedSensorState")
 
 DBI::dbGetQuery(conn = pgConn,
-               statement = "SELECT * FROM \"losState\"")
-
+               statement = "SELECT * FROM \"sensorAcqState\"")
 
 DBI::dbSendQuery(conn = pgConn,
                  statement = "DROP TABLE \"sensorAcqState\"")
